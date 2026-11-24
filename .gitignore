@@ -1,0 +1,10 @@
+.gradle/
+.gradle-local/
+build/
+run/
+*.admin.json
+seiyo-updater.json
+*.pem
+*.private.json
+private-release/
+.seiyo-updater/
