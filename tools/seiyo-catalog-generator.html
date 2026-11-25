@@ -13,7 +13,7 @@ h1,h2,p{margin:0}h1{font-size:clamp(23px,4vw,31px);letter-spacing:.04em}
 h2{font-size:17px}header p{margin-top:5px;color:#b8d4e6;font-family:Montserrat,system-ui,sans-serif;font-size:13px}
 main{display:grid;gap:16px}.sheet{border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:20px}
 .title,.tools,.item{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.title{justify-content:space-between;margin-bottom:14px}
-.tools{margin-top:13px}.fields{display:grid;grid-template-columns:1fr 1fr;gap:13px}.fields.channel{grid-template-columns:1fr minmax(105px,160px)}
+.tools{margin-top:13px}.fields{display:grid;grid-template-columns:1fr 1fr;gap:13px}
 label{display:grid;gap:5px;font-weight:600;font-size:13px}.wide{grid-column:1/-1}.check{display:flex;align-items:center;gap:8px}.check input{width:auto}
 input,select,textarea,button{font:inherit;color:inherit}input,select,textarea{min-width:0;width:100%;padding:8px 10px;border:1px solid #b8cbdc;border-radius:7px;background:#fcfdff}
 textarea{resize:vertical;min-height:56px}button{cursor:pointer;border:1px solid #b8cbdc;border-radius:8px;background:#fff;padding:8px 12px;font-weight:650;min-height:36px}
@@ -24,29 +24,18 @@ button.primary:hover:not(:disabled){background:#005548}button:disabled{opacity:.
 .count{border-radius:99px;background:var(--pale);color:#125a4c;padding:4px 10px;font-size:12px;font-weight:700}
 footer{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 #status{min-height:22px;overflow-wrap:anywhere}#status[data-error="true"]{color:#a52b21}
+.options summary{cursor:pointer;font-weight:650}
+#entry-details{margin-top:14px}#entry-details .fields{margin-top:12px}
+#revision{width:112px}#status{flex:1;min-width:120px}
+#client-form{align-items:end}#client-form label{flex:1;min-width:min(280px,100%)}
 [hidden]{display:none!important}
 @media(max-width:750px){.columns{grid-template-columns:1fr}.sheet{padding:15px}header>div,main{padding:17px}}
-@media(max-width:430px){.fields{grid-template-columns:1fr}.fields.channel{grid-template-columns:1fr}}
+@media(max-width:430px){.fields{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <header><div><h1>星陽 配布カタログ</h1><p>Minecraft 1.19.2 / Fabric</p></div></header>
 <main>
-<section class="sheet" aria-labelledby="channel-title">
-  <div class="title"><h2 id="channel-title">配布先と署名鍵</h2><span id="key-state" class="muted">鍵の読み込み待ち</span></div>
-  <div class="fields channel">
-    <label>公開する manifest.json の URL<input id="manifest-url" type="url" placeholder="https://example.github.io/seiyo/manifest.json" autocomplete="off"></label>
-    <label>配布番号<input id="revision" type="number" value="1" min="1" max="999999999999999" step="1"></label>
-  </div>
-  <div class="tools">
-    <button id="new-key" type="button">新規の鍵を作成</button>
-    <button id="load-key" type="button">管理者鍵を開く</button>
-    <button id="save-key" type="button" disabled>管理者鍵を保存</button>
-    <button id="client-config" type="button" disabled>参加者用設定を出力</button>
-  </div>
-  <input id="key-input" type="file" accept=".json" hidden>
-</section>
-
 <div class="columns">
 <section class="sheet" aria-labelledby="catalog-title">
   <div class="title"><h2 id="catalog-title">公開する項目</h2><span class="count" id="count">0 件</span></div>
@@ -59,37 +48,49 @@ footer{display:flex;align-items:center;justify-content:space-between;gap:12px;fl
   <div class="title"><h2 id="editor-title">ファイルを登録</h2></div>
   <div class="fields">
     <label class="wide">配布する JAR / ZIP<input id="artifact" type="file" accept=".jar,.zip"></label>
-    <label>種類<select id="type"><option value="mod">Fabric Mod</option><option value="pack">リソースパック</option></select></label>
-    <label>ID<input id="id" required maxlength="64" placeholder="例 mtr"></label>
-    <label>表示名<input id="name" required maxlength="100"></label>
-    <label>バージョン<input id="version" required maxlength="100"></label>
-    <label>保存名<input id="file" required maxlength="160" placeholder="例 seiyo-assets.zip"></label>
     <label class="wide">ファイルの直接 URL<input id="source" required type="url" placeholder="https://example.com/download.jar"></label>
-    <label class="wide">必要な項目の ID<input id="requires" placeholder="例 fabric-api, mtr（カンマ区切り）"></label>
-    <p id="dependency-hint" class="wide muted" hidden></p>
     <label class="check wide"><input id="required" type="checkbox">星陽への参加に必須</label>
-    <label class="wide">更新メモ<textarea id="notes" maxlength="2000" rows="2"></textarea></label>
   </div>
+  <details id="entry-details" class="options">
+    <summary>表示名・依存関係など</summary>
+    <div class="fields">
+      <label>種類<select id="type"><option value="mod">Fabric Mod</option><option value="pack">リソースパック</option></select></label>
+      <label>ID<input id="id" maxlength="64"></label>
+      <label>表示名<input id="name" maxlength="100"></label>
+      <label>バージョン<input id="version" maxlength="100"></label>
+      <label>保存名<input id="file" maxlength="160"></label>
+      <label class="wide">依存先の ID<input id="requires" placeholder="例 fabric-api, mtr"></label>
+      <p id="dependency-hint" class="wide muted" hidden></p>
+      <label class="wide">更新メモ<textarea id="notes" maxlength="2000" rows="2"></textarea></label>
+    </div>
+  </details>
   <div class="tools">
     <button class="primary" id="save-entry" type="submit">一覧に追加</button>
     <button id="reset-editor" type="button" hidden>編集を終了</button>
   </div>
 </form>
 </div>
-<footer class="sheet"><p id="status" role="status" aria-live="polite"></p><button class="primary" id="export" type="button" disabled>manifest.json を出力</button></footer>
+<footer class="sheet">
+  <label>配布番号<input id="revision" type="number" value="1" min="1" max="999999999999999" step="1"></label>
+  <p id="status" role="status" aria-live="polite"></p>
+  <button class="primary" id="export" type="button">manifest.json を出力</button>
+</footer>
+<details class="sheet options">
+  <summary>参加者用設定を作る（初回）</summary>
+  <form id="client-form" class="tools">
+    <label>公開する manifest.json の URL<input id="manifest-url" required type="url" placeholder="https://example.github.io/seiyo/manifest.json" autocomplete="off"></label>
+    <button id="client-config" type="submit">seiyo-updater.json を出力</button>
+  </form>
+</details>
 </main>
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", {fatal:true});
-const algorithm = {name:"ECDSA", namedCurve:"P-256"};
-const signAlgorithm = {name:"ECDSA", hash:"SHA-256"};
-const checkBytes = encoder.encode("seiyo-signing-key");
 const maxFile = 128 * 1024 * 1024;
 const maxJson = 2 * 1024 * 1024;
 const entries = new Map();
-let keys = null;
 let lastRevision = 0;
 let editing = null;
 let busy = false;
@@ -138,36 +139,8 @@ async function readJson(file, limit) {
   return JSON.parse(await file.text());
 }
 
-async function newKeys() {
-  const pair = await crypto.subtle.generateKey(algorithm, true, ["sign", "verify"]);
-  return {
-    format:"seiyo-admin-v1",
-    publicKey:base64(await crypto.subtle.exportKey("spki", pair.publicKey)),
-    signingKey:base64(await crypto.subtle.exportKey("pkcs8", pair.privateKey))
-  };
-}
-
-async function signingKey(data) {
-  return crypto.subtle.importKey("pkcs8", unbase64(data.signingKey), algorithm, false, ["sign"]);
-}
-
-async function verificationKey(data) {
-  return crypto.subtle.importKey("spki", unbase64(data.publicKey), algorithm, false, ["verify"]);
-}
-
-async function validateKeys(data) {
-  if (data.format !== "seiyo-admin-v1") {
-    throw new Error("星陽の管理者鍵ファイルを選んでください。");
-  }
-  const signature = await crypto.subtle.sign(signAlgorithm, await signingKey(data), checkBytes);
-  if (!await crypto.subtle.verify(signAlgorithm, await verificationKey(data), signature, checkBytes)) {
-    throw new Error("管理者鍵と公開鍵が一致しません。");
-  }
-  const {format, publicKey, signingKey: secret, manifestUrl} = data;
-  return {format, publicKey, signingKey:secret, manifestUrl};
-}
-
 async function sha(bytes) {
+  if (!globalThis.crypto?.subtle) throw new Error("この HTML を新しいブラウザーで開いてください。");
   return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
     value => value.toString(16).padStart(2, "0")).join("");
 }
@@ -178,13 +151,10 @@ function mask(bytes) {
 }
 
 async function decodePayload(envelope) {
-  if (envelope.format !== "seiyo-signed-v1" && envelope.format !== "seiyo-packed-v1") {
+  if (!["seiyo-signed-v1", "seiyo-packed-v1", "seiyo-packed-unsigned-v1"].includes(envelope.format)) {
     throw new Error("配布カタログの形式を確認してください。");
   }
   const bytes = unbase64(envelope.payload);
-  if (!await crypto.subtle.verify(signAlgorithm, await verificationKey(keys), unbase64(envelope.signature), bytes)) {
-    throw new Error("この署名鍵で公開したカタログを選んでください。");
-  }
   if (envelope.format === "seiyo-signed-v1") return bytes;
   const reader = new Blob([mask(bytes)]).stream().pipeThrough(new DecompressionStream("deflate")).getReader();
   const chunks = [];
@@ -311,6 +281,7 @@ function clearEditor() {
   $("save-entry").textContent = "一覧に追加";
   $("reset-editor").hidden = true;
   $("dependency-hint").hidden = true;
+  $("entry-details").open = false;
 }
 
 function edit(item) {
@@ -328,13 +299,9 @@ function edit(item) {
 }
 
 function render() {
-  $("key-state").textContent = keys ? "署名鍵を読み込み済み" : "鍵の読み込み待ち";
-  $("save-key").disabled = busy || !keys;
-  $("client-config").disabled = busy || !keys;
-  $("export").disabled = busy || !keys;
-  $("load-catalog").disabled = busy || !keys;
-  $("load-key").disabled = busy || entries.size > 0;
-  $("new-key").disabled = busy || keys !== null;
+  $("client-config").disabled = busy;
+  $("export").disabled = busy;
+  $("load-catalog").disabled = busy;
   $("save-entry").disabled = busy;
   $("count").textContent = entries.size + " 件";
   $("empty").hidden = entries.size > 0;
@@ -376,7 +343,6 @@ async function run(task) {
   render();
   try {
     status("");
-    if (!globalThis.crypto?.subtle) throw new Error("新しい Chrome / Edge / Firefox で、この HTML を開いてください。");
     await task();
   } catch (error) {
     status(error.message || String(error), true);
@@ -394,27 +360,14 @@ function receive(input, handler) {
   });
 }
 
-$("new-key").addEventListener("click", () => run(async () => {
-  keys = await newKeys();
-  download(jsonFile({...keys, manifestUrl:$("manifest-url").value.trim()}), "seiyo.admin.json");
-  status("鍵を作成しました。管理者鍵は手元で保管してください。");
-}));
-$("load-key").addEventListener("click", () => $("key-input").click());
-receive("key-input", async file => {
-  keys = await validateKeys(await readJson(file, 16384));
-  if (keys.manifestUrl) $("manifest-url").value = keys.manifestUrl;
-  status("管理者鍵を読み込みました。");
+$("client-form").addEventListener("submit", event => {
+  event.preventDefault();
+  run(async () => {
+    const manifestUrl = https($("manifest-url").value.trim());
+    download(jsonFile({manifestUrl}), "seiyo-updater.json");
+    status("参加者用設定ファイルを出力しました。");
+  });
 });
-$("save-key").addEventListener("click", () => {
-  download(jsonFile({...keys, manifestUrl:$("manifest-url").value.trim()}), "seiyo.admin.json");
-  status("管理者鍵を保存しました。");
-});
-$("client-config").addEventListener("click", () => run(async () => {
-  const manifestUrl = https($("manifest-url").value.trim());
-  const {publicKey} = keys;
-  download(jsonFile({manifestUrl, publicKey}), "seiyo-updater.json");
-  status("参加者用の設定ファイルを出力しました。");
-}));
 
 $("load-catalog").addEventListener("click", () => {
   if ((entries.size || lastRevision) && !confirm("編集中の一覧を読み込むカタログで置き換えますか？")) return;
@@ -457,12 +410,21 @@ $("artifact").addEventListener("change", () => run(async () => {
   } else {
     await archiveMetadata(file, "pack.mcmeta");
     if (!editing) {
-      $("name").value = file.name.replace(/\.zip$/i, "");
-      $("id").value = $("name").value.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^[^a-z]+/, "");
+      $("name").value = file.name.replace(/\.zip$/i, "").slice(0, 100);
+      const slug = $("name").value.toLowerCase().replace(/[^a-z0-9_-]+/g, "-")
+        .replace(/^[^a-z]+|[-_]+$/g, "").slice(0, 64);
+      let number = entries.size + 1;
+      while (entries.has("pack-" + number)) number++;
+      $("id").value = slug.length > 1 ? slug : "pack-" + number;
+      $("version").value = $("revision").value || "1";
     }
     $("dependency-hint").hidden = true;
   }
-  if (!editing || isMod) $("file").value = file.name.replace(/\.(jar|zip)$/i, isMod ? ".jar" : ".zip");
+  if (!editing || isMod) {
+    const extension = isMod ? ".jar" : ".zip";
+    const filename = file.name.replace(/\.(jar|zip)$/i, extension);
+    $("file").value = validFile(filename) && filename.endsWith(extension) ? filename : $("id").value + extension;
+  }
 }));
 
 $("editor").addEventListener("submit", event => {
@@ -500,7 +462,12 @@ $("editor").addEventListener("submit", event => {
       item.sha256 = previous.sha256;
       item.size = previous.size;
     }
-    validateEntry(item);
+    try {
+      validateEntry(item);
+    } catch (error) {
+      $("entry-details").open = true;
+      throw error;
+    }
     entries.set(item.id, item);
     clearEditor();
     status(item.name + " を登録しました。");
@@ -508,7 +475,6 @@ $("editor").addEventListener("submit", event => {
 });
 
 $("export").addEventListener("click", () => run(async () => {
-  https($("manifest-url").value.trim());
   validateGraph(entries);
   const revision = Number($("revision").value);
   if (!Number.isSafeInteger(revision) || revision <= lastRevision || revision < 1 || revision > 999999999999999) {
@@ -524,8 +490,7 @@ $("export").addEventListener("click", () => run(async () => {
   const compressed = await new Response(new Blob([payload]).stream()
     .pipeThrough(new CompressionStream("deflate"))).arrayBuffer();
   const packed = mask(new Uint8Array(compressed));
-  const signature = await crypto.subtle.sign(signAlgorithm, await signingKey(keys), packed);
-  const manifest = jsonFile({format:"seiyo-packed-v1", payload:base64(packed), signature:base64(signature)});
+  const manifest = jsonFile({format:"seiyo-packed-unsigned-v1", payload:base64(packed)});
   if (manifest.size > maxJson) throw new Error("カタログのサイズ上限は2 MiBです。");
   download(manifest, "manifest.json");
   lastRevision = revision;

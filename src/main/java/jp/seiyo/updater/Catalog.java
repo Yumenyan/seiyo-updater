@@ -43,9 +43,11 @@ final class Catalog {
             try (InputStream input = Files.newInputStream(path)) {
                 JsonObject json = parse(read(input, 16384));
                 URI manifest = https(URI.create(required(json, "manifestUrl", 2048)));
-                String key = required(json, "publicKey", 512);
+                String key = json.has("publicKey") ? required(json, "publicKey", 512) : null;
                 byte[] content = json.has("contentKey") ? BASE64.decode(required(json, "contentKey", 128)) : null;
-                if (content != null && content.length != 32) throw new IOException("旧形式の配布鍵が不正です。");
+                if (content != null && (key == null || content.length != 32)) {
+                    throw new IOException("旧形式の配布鍵が不正です。");
+                }
                 return new Config(manifest, key, content);
             }
         }
@@ -64,18 +66,19 @@ final class Catalog {
     static Release fetch(Config config) throws Exception {
         JsonObject envelope = parse(download(config.manifest, MAX_JSON));
         String encoding = required(envelope, "format", 32);
-        boolean packed = encoding.equals("seiyo-packed-v1");
+        boolean unsigned = encoding.equals("seiyo-packed-unsigned-v1");
+        boolean packed = unsigned || encoding.equals("seiyo-packed-v1");
         if (!packed && !encoding.equals("seiyo-signed-v1")) {
             throw new IOException("更新カタログの形式が異なります。");
         }
         byte[] payload = BASE64.decode(required(envelope, "payload", MAX_JSON));
-        byte[] signed = BASE64.decode(required(envelope, "signature", 256));
-        Signature verifier = Signature.getInstance("SHA256withECDSAinP1363Format");
-        verifier.initVerify(KeyFactory.getInstance("EC").generatePublic(
-            new X509EncodedKeySpec(BASE64.decode(config.publicKey))));
-        verifier.update(payload);
-        if (signed.length != 64 || !verifier.verify(signed)) {
-            throw new IOException("更新カタログの署名が一致しません。");
+        if (unsigned) {
+            if (config.publicKey != null) {
+                throw new IOException("署名なしの配布に切り替わりました。配布元の新しい seiyo-updater.json を入れてください。");
+            }
+            if (envelope.has("signature")) throw new IOException("更新カタログの形式が異なります。");
+        } else {
+            verifySignature(config, envelope, payload);
         }
         if (packed) {
             PackedArchive.mask(payload, payload.length, 0);
@@ -111,6 +114,18 @@ final class Catalog {
         for (String id : entries.keySet()) checkDependencies(id, entries, new HashSet<>(), checked);
         return new Release(Long.parseLong(revisionText), hex(payload),
             java.util.Collections.unmodifiableMap(entries), config.contentKey);
+    }
+
+    private static void verifySignature(Config config, JsonObject envelope, byte[] payload) throws Exception {
+        if (config.publicKey == null) throw new IOException("署名付きの旧カタログを読むには旧形式の参加者設定が必要です。");
+        byte[] signed = BASE64.decode(required(envelope, "signature", 256));
+        Signature verifier = Signature.getInstance("SHA256withECDSAinP1363Format");
+        verifier.initVerify(KeyFactory.getInstance("EC").generatePublic(
+            new X509EncodedKeySpec(BASE64.decode(config.publicKey))));
+        verifier.update(payload);
+        if (signed.length != 64 || !verifier.verify(signed)) {
+            throw new IOException("更新カタログの署名が一致しません。");
+        }
     }
 
     private static Entry entry(JsonObject json, URI base) throws IOException {
