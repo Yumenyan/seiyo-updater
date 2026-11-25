@@ -1,12 +1,12 @@
-# 星陽アップデーター 1.6
+# 星陽アップデーター 1.7
 
 Minecraft Java Edition 1.19.2／Fabric Loader 0.14.25 以降向けです。Java 17 以降が必要です。
-プレイヤーの更新にはクライアント用 Mod を使います。VPS 等の専用サーバーは、付属の seiyo-tools.jar で起動前に更新できます。
+プレイヤーと Fabric 専用サーバーの両方で使えます。
 
 ## 参加者の初回設定
 
-1. Minecraft を閉じます。星陽インスタンスの **mods/** に、**release/seiyo-updater-1.6.0+mc1.19.2.jar** を入れます。旧版のアップデーター JAR がある場合は入れ替えてください。
-2. 配布元から受け取った **seiyo-updater.json** を、そのインスタンスの **config/** に入れます。タイトル画面の **星陽アップデート → 設定フォルダー** からも場所を開けます。
+1. Minecraft を閉じます。星陽インスタンスの **mods/** に、**release/seiyo-updater-1.7.0+mc1.19.2.jar** を入れます。旧版のアップデーター JAR がある場合は入れ替えてください。
+2. Minecraft を起動します。初回の設定画面に配布元の **manifest.json の HTTPS URL** を貼り付け、**取得画面を開く** を押すと一覧に進みます。確認後に URL が保存されます。既存の config/seiyo-updater.json も使えます。
 新規導入ではランチャーの JVM 引数を追加せずに使えます。
 
 ### 旧版で SYP 化した Mod がある場合
@@ -37,10 +37,10 @@ macOS の例です。
 
 ## 管理者の配布手順
 
-1. GitHub リポジトリに付属の **.github/workflows/pages.yml** と **site/** を置きます。リポジトリの **Settings → Pages → Source** で **GitHub Actions** を選びます。
+1. manifest.json を配信する HTTPS の配布先を用意します。
 2. **tools/seiyo-catalog-generator.html** をローカルで開きます。**Modrinth から探す** で Mod 名を検索し、プロジェクトと Minecraft 1.19.2／Fabric に対応するバージョンを選んで追加できます。配布ページ・個別バージョンページや JAR／ZIP の直接 HTTPS URL を貼る方法も使えます。Modrinth の配布ページの URL を貼った場合は、対応する最新正式版を選びます。どちらの方法でも取得した版の直接 URL をカタログに記録します。配布元がブラウザーからの取得を許可していない場合は、同じ JAR／ZIP を手元から選べます。Modrinth からの登録では API のサイズと SHA-512 を使い、インストール時にファイル本体を取得して検証します。その他の直接 URL でダウンロードを省略するには、詳細欄にサイズ・SHA-256 と登録情報を入力してください。ローカルの JAR を選んだ場合は Mod ID とバージョンを読み取ります。
-3. **manifest.json を出力**し、GitHub リポジトリの **site/manifest.json** に置いて既定ブランチへ反映します。Actions が **site/** を公開します。
-4. 初回だけ **参加者用設定を作る（初回）** を開き、公開した **manifest.json** の HTTPS URL を入力して **seiyo-updater.json** を出力します。参加者用設定に必要なのは配布 URL だけです。
+3. **manifest.json を出力**し、配布先へアップロードします。
+4. 公開した **manifest.json の HTTPS URL** を参加者に共有します。参加者用の JSON を配布する場合は、**参加者用設定を作る（初回）** から出力できます。
 5. 次回は公開中の **manifest.json** を開いて項目を編集します。配布番号は自動で1つ進みます。同じ URL でファイルを差し替えた場合は **URL から再取得して保存** を使うと、サイズとハッシュを取り直せます。旧版の署名付きカタログも一覧として開けます。旧形式の暗号化項目は、通常の JAR／ZIP を取得できる URL を指定し直してから出力してください。
 
 Google ドライブのファイルを登録するときは、ZIP を展開して **tools/drive-editor.cmd** を実行し、開いたジェネレーターに共有 URL を貼ってください。ブラウザーが直接読めない場合に備え、ローカルの取得ツールがファイルを読み取ります。Google アカウントにログインしていない参加者もダウンロードできる共有設定が必要です。共有権限・ダウンロード制限・利用上限は Google ドライブ側の設定に従います。クライアントも 1.6 に更新すると Google ドライブの確認画面を処理できます。
@@ -53,29 +53,26 @@ Modrinth のメタデータだけで登録した項目を含むカタログに�
 
 ## VPS の Fabric 専用サーバーを更新する
 
-1. サーバーを停止し、サーバーフォルダー直下に **release/seiyo-tools.jar** をコピーします。
-2. **config/seiyo-server-updater.json** を作成し、配布カタログの URL とサーバーに入れる Mod の **カタログ ID** を指定します。ID はジェネレーターの登録済み一覧で確認できます。公開カタログをクライアントと共用できます。
+1. サーバーを停止し、**release/seiyo-updater-1.7.0+mc1.19.2.jar** をサーバーの **mods/** に入れます。
+2. **config/seiyo-updater.json** に配布 URL を入れるか、起動環境に **SEIYO_MANIFEST_URL** を設定します。
 
 ```json
 {
-  "manifestUrl": "https://example.github.io/seiyo/manifest.json",
-  "serverMods": ["example_mod"]
+  "manifestUrl": "https://example.com/seiyo/manifest.json"
 }
 ```
 
-3. サーバーフォルダーで、次のように更新と起動を実行します。Fabric の JAR 名と起動オプションは既存のものに合わせてください。
+3. いつもの Fabric サーバー起動コマンドを実行します。配布カタログで **必須** のサーバー対応 Mod とその依存先を自動選択します。更新がある場合は検証後に差し替え、更新済み JAR を読み込むよう Java を起動し直します。最新版の場合はそのまま起動します。
+
+配布ジェネレーターの詳細欄にある **クライアント専用 Mod** を使うと、必須指定したクライアント専用 Mod もサーバーの対象から外せます。
+
+既存の Mod の依存エラーで Fabric がアップデーターを読み込む前に止まる場合や、Java 起動コマンドの再取得ができない環境では、付属の **seiyo-tools.jar** をサーバーのルートに置き、起動前に更新する方式を使います。
 
 ```sh
 java -jar seiyo-tools.jar server . -- java -Xmx4G -jar fabric-server-launch.jar nogui
 ```
 
-起動コマンドを省くと、停止中のサーバーの Mod 更新だけを実行します。既存のサービス管理下では、停止後の起動前処理にも使えます。
-
-```sh
-java -jar seiyo-tools.jar server .
-```
-
-指定した項目とカタログの依存先のみを対象にします。クライアント専用 Mod とリソースパックはサーバーにインストールできません。取得と検証が全件成功してから JAR を差し替えます。失敗した場合は非ゼロで終了し、指定した起動コマンドは実行しません。差し替え中に失敗すると旧 JAR への復元を試みます。ワールドとサーバー設定は更新対象外です。
+起動コマンドを省略すると更新だけを実行します。この方式では旧来の config/seiyo-server-updater.json による serverMods の明示指定も使えます。更新が失敗した場合はサーバーを起動せず、ファイルの差し替えに失敗した場合は元に戻します。
 
 ## 保存形式と復旧
 

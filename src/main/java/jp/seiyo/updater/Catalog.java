@@ -55,10 +55,10 @@ final class Catalog {
 
     record Entry(String id, String name, String type, String version, String file,
                  URI uri, boolean encrypted, String hash, int size, boolean required,
-                 List<String> dependencies, String notes, String sha512) {
+                 List<String> dependencies, String notes, String sha512, boolean clientOnly) {
         Entry(String id, String name, String type, String version, String file, URI uri, boolean encrypted,
               String hash, int size, boolean required, List<String> dependencies, String notes) {
-            this(id, name, type, version, file, uri, encrypted, hash, size, required, dependencies, notes, "");
+            this(id, name, type, version, file, uri, encrypted, hash, size, required, dependencies, notes, "", false);
         }
 
         boolean metadataOnly() {
@@ -174,9 +174,14 @@ final class Catalog {
         }
         String notes = json.has("notes") ? json.get("notes").getAsString() : "";
         if (notes.length() > 2000) throw new IOException("更新メモが長すぎます: " + id);
+        if (json.has("clientOnly") && (!json.get("clientOnly").isJsonPrimitive()
+                || !json.getAsJsonPrimitive("clientOnly").isBoolean())) {
+            throw new IOException("クライアント専用フラグが不正です: " + id);
+        }
         return new Entry(id, required(json, "name", 100), type, required(json, "version", 100),
             file, asset, mode.equals("aes-gcm"), hash, Integer.parseInt(size),
-            json.get("required").getAsBoolean(), List.copyOf(dependencies), notes, sha512);
+            json.get("required").getAsBoolean(), List.copyOf(dependencies), notes, sha512,
+            json.has("clientOnly") && json.get("clientOnly").getAsBoolean());
     }
 
     private static void checkDependencies(String id, Map<String, Entry> entries,

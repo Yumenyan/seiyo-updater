@@ -2,7 +2,7 @@ plugins {
     id 'fabric-loom' version '1.7.4'
 }
 group = 'jp.seiyo'
-version = '1.6.0+mc1.19.2'
+version = '1.7.0+mc1.19.2'
 repositories { mavenCentral() }
 
 configurations { headlessLibraries }

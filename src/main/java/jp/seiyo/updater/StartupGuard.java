@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import net.fabricmc.loader.api.FabricLoader;
+import net.fabricmc.api.EnvType;
 import net.fabricmc.loader.api.entrypoint.PreLaunchEntrypoint;
 
 public final class StartupGuard implements PreLaunchEntrypoint {
@@ -16,6 +17,10 @@ public final class StartupGuard implements PreLaunchEntrypoint {
     @Override
     public void onPreLaunch() {
         try {
+            if (FabricLoader.getInstance().getEnvironmentType() == EnvType.SERVER) {
+                ServerStartup.run(FabricLoader.getInstance().getGameDir().toRealPath());
+                return;
+            }
             Path home = UpdateWorker.directory(FabricLoader.getInstance().getGameDir()
                 .toRealPath().resolve(UpdateWorker.HOME));
             Path root = home.getParent();

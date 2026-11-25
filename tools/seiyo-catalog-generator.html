@@ -88,6 +88,7 @@ footer{display:flex;align-items:center;justify-content:space-between;gap:12px;fl
       <label>表示名<input id="name" maxlength="100"></label>
       <label>バージョン<input id="version" maxlength="100"></label>
       <label>保存名<input id="file" maxlength="160"></label>
+      <label class="check wide"><input id="client-only" type="checkbox">クライアント専用 Mod</label>
       <label>ファイルサイズ（バイト）<input id="manual-size" type="number" min="1" max="134217728" step="1"></label>
       <label>SHA-256<input id="manual-hash" maxlength="64" placeholder="サイズと指定すると取得を省略"></label>
       <label class="wide">依存先の ID<input id="requires" placeholder="例 fabric-api, mtr"></label>
@@ -496,6 +497,7 @@ function edit(item) {
   if (item.mode === "plain") $("source").value = item.source;
   $("requires").value = item.requires.join(", ");
   $("required").checked = item.required;
+  $("client-only").checked = item.clientOnly === true;
   $("id").readOnly = true;
   $("editor-title").textContent = "登録内容を編集";
   $("save-entry").textContent = "変更を保存";
@@ -712,6 +714,7 @@ async function populateFromArchive(file) {
     $("id").value = metadata.id || "";
     $("version").value = metadata.version || "";
     if (!editing) $("name").value = String(metadata.name || metadata.id || "");
+    if (metadata.environment === "client") $("client-only").checked = true;
     const requires = Object.keys(metadata.depends || {}).filter(id => !["minecraft","java","fabricloader"].includes(id));
     if (!editing) $("requires").value = requires.filter(id => entries.has(id)).join(", ");
     $("dependency-hint").hidden = requires.length === 0;
@@ -780,6 +783,7 @@ async function saveEntry(refreshSource, remote = null, report = status) {
   if (!editing && entries.has(item.id)) throw new Error("この ID は登録済みです。一覧から編集してください。");
   if (previous && previous.type !== item.type) throw new Error("登録済みの項目は種類を変更できません。");
   item.required = $("required").checked;
+  if (item.type === "mod" && $("client-only").checked) item.clientOnly = true;
   item.requires = Array.from(new Set($("requires").value.split(/[\s,、]+/).filter(Boolean)));
   item.mode = "plain";
   item.source = resolved.source;
@@ -844,7 +848,7 @@ $("export").addEventListener("click", () => run(async () => {
   download(manifest, "manifest.json");
   lastRevision = revision;
   $("revision").value = revision + 1;
-  status("manifest.json を出力しました。GitHub リポジトリの site/ に置いてください。");
+  status("manifest.json を出力しました。HTTPS の配布先に置いてください。");
 }));
 
 render();

@@ -49,6 +49,32 @@ final class Updater {
         return FabricLoader.getInstance().getConfigDir().resolve(Catalog.CONFIG_NAME);
     }
 
+    static synchronized CompletableFuture<Snapshot> configure(String value) {
+        current = CompletableFuture.supplyAsync(() -> {
+            Path temporary = null;
+            try {
+                var manifest = Downloads.https(java.net.URI.create(value.trim()));
+                var config = new Catalog.Config(manifest, null, null);
+                Path destination = configPath();
+                Files.createDirectories(destination.getParent());
+                temporary = Files.createTempFile(destination.getParent(), "seiyo-updater-", ".tmp");
+                JsonObject json = new JsonObject();
+                json.addProperty("manifestUrl", manifest.toASCIIString());
+                Files.writeString(temporary, json.toString());
+                Snapshot snapshot = inspect(config, FabricLoader.getInstance().getGameDir().toRealPath());
+                Files.move(temporary, destination);
+                return snapshot;
+            } catch (Exception failure) {
+                throw new CompletionException(failure);
+            } finally {
+                if (temporary != null) {
+                    try { Files.deleteIfExists(temporary); } catch (IOException ignored) {}
+                }
+            }
+        }, IO);
+        return current;
+    }
+
     static synchronized CompletableFuture<Snapshot> check(boolean refresh) {
         if (current == null || (refresh && current.isDone())) {
             current = CompletableFuture.supplyAsync(() -> {

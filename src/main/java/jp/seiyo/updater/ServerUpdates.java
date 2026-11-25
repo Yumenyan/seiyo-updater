@@ -22,6 +22,7 @@ import net.fabricmc.loader.api.metadata.version.VersionPredicate;
 
 final class ServerUpdates {
     private static final String CONFIG = "seiyo-server-updater.json";
+    static final String PREUPDATED = "SEIYO_SERVER_PREUPDATED";
 
     private record Mod(Path path, String id, String version, JsonObject metadata) {}
 
@@ -31,44 +32,69 @@ final class ServerUpdates {
         try (var channel = UpdateWorker.lockChannel(home); var lock = channel.tryLock()) {
             if (lock == null) throw new IOException("別の星陽プロセスがこのサーバーを使用しています。");
             UpdateWorker.applyPending(root, home);
-            update(root, home);
-            if (launch.isEmpty()) return 0;
-            Process server = new ProcessBuilder(launch).directory(root.toFile()).inheritIO().start();
-            Thread shutdown = new Thread(() -> {
-                server.destroy();
-                try {
-                    server.waitFor();
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                }
-            }, "seiyo-server-stop");
-            Runtime.getRuntime().addShutdownHook(shutdown);
-            try {
-                return server.waitFor();
-            } finally {
-                Runtime.getRuntime().removeShutdownHook(shutdown);
+            if (stage(root, home, false)) {
+                UpdateWorker.applyPending(root, home);
+                System.out.println("サーバー Mod の更新を適用しました。");
             }
+            if (launch.isEmpty()) return 0;
+            return launch(root, launch);
         }
     }
 
-    private static void update(Path root, Path home) throws Exception {
+    static int launch(Path root, List<String> command) throws Exception {
+        ProcessBuilder builder = new ProcessBuilder(command).directory(root.toFile()).inheritIO();
+        builder.environment().put(PREUPDATED, root.toString());
+        Process server = builder.start();
+        Thread shutdown = new Thread(() -> {
+            server.destroy();
+            try {
+                server.waitFor();
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        }, "seiyo-server-stop");
+        Runtime.getRuntime().addShutdownHook(shutdown);
+        try {
+            return server.waitFor();
+        } finally {
+            Runtime.getRuntime().removeShutdownHook(shutdown);
+        }
+    }
+
+    static boolean stage(Path root, Path home, boolean mandatoryOnly) throws Exception {
         Path configPath = root.resolve("config").resolve(CONFIG);
-        Catalog.Config config = Catalog.Config.load(configPath);
+        if (!Files.exists(configPath)) configPath = configPath.resolveSibling(Catalog.CONFIG_NAME);
         JsonObject settings;
-        try (var input = Files.newInputStream(configPath)) {
-            settings = Catalog.parse(Catalog.read(input, 16384));
+        Catalog.Config config;
+        if (Files.exists(configPath)) {
+            config = Catalog.Config.load(configPath);
+            try (var input = Files.newInputStream(configPath)) {
+                settings = Catalog.parse(Catalog.read(input, 16384));
+            }
+        } else {
+            String url = System.getenv("SEIYO_MANIFEST_URL");
+            if (url == null || url.isBlank()) {
+                throw new IOException("config/" + CONFIG + " または SEIYO_MANIFEST_URL に配布 URL を指定してください。");
+            }
+            config = new Catalog.Config(Downloads.https(java.net.URI.create(url.trim())), null, null);
+            settings = new JsonObject();
         }
         var configured = settings.getAsJsonArray("serverMods");
-        if (configured == null || configured.isEmpty()) {
-            throw new IOException("config/" + CONFIG + " の serverMods にサーバー用カタログ ID を指定してください。");
-        }
         Catalog.Release release = Catalog.fetch(config);
         Set<String> selected = new LinkedHashSet<>();
-        for (var id : configured) {
-            if (!id.isJsonPrimitive() || !id.getAsJsonPrimitive().isString()) {
-                throw new IOException("serverMods には文字列のカタログ ID を指定してください。");
+        if (mandatoryOnly || configured == null) {
+            for (Catalog.Entry entry : release.entries().values()) {
+                if (entry.required() && entry.type().equals("mod") && !entry.clientOnly()) {
+                    include(entry.id(), selected, release.entries());
+                }
             }
-            include(id.getAsString(), selected, release.entries());
+        } else {
+            for (var id : configured) {
+                if (!id.isJsonPrimitive() || !id.getAsJsonPrimitive().isString()) {
+                    throw new IOException("serverMods には文字列のカタログ ID を指定してください。");
+                }
+                include(id.getAsString(), selected, release.entries());
+            }
         }
         Path mods = UpdateWorker.directory(root.resolve("mods"));
         Map<String, List<Mod>> installed = scan(mods);
@@ -112,14 +138,14 @@ final class ServerUpdates {
             Catalog.rememberRevision(home, config, release);
             if (changes.isEmpty()) {
                 System.out.println("サーバー Mod は最新です。");
-                return;
+                return false;
             }
             UpdateWorker.save(job, changes);
             Path marker = Files.writeString(job.resolve("pending.tmp"), job.getFileName().toString());
             Files.move(marker, home.resolve(UpdateWorker.PENDING), StandardCopyOption.ATOMIC_MOVE);
             submitted = true;
-            UpdateWorker.applyPending(root, home);
-            System.out.println("サーバー Mod を更新しました: " + changes.size() + " 件");
+            System.out.println("サーバー Mod の更新を準備しました: " + changes.size() + " 件");
+            return true;
         } finally {
             if (!submitted) {
                 try (var files = Files.list(job)) {
@@ -132,7 +158,7 @@ final class ServerUpdates {
 
     private static void include(String id, Set<String> selected, Map<String, Catalog.Entry> entries) throws IOException {
         Catalog.Entry entry = entries.get(id);
-        if (entry == null || !entry.type().equals("mod")) {
+        if (entry == null || !entry.type().equals("mod") || entry.clientOnly()) {
             throw new IOException("サーバー用の Mod がカタログにありません: " + id);
         }
         if (selected.add(id)) {

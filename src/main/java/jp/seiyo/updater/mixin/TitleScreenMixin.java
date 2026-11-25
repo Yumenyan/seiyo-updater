@@ -28,7 +28,7 @@ abstract class TitleScreenMixin extends Screen {
 
     @Inject(method = "tick", at = @At("TAIL"))
     private void seiyo$displayAvailability(CallbackInfo callback) {
-        if (seiyo$button == null) return;
+        if (seiyo$button == null || TitleUpdates.offerSetup(this)) return;
         Text label = TitleUpdates.label();
         if (!seiyo$button.getMessage().equals(label)) seiyo$button.setMessage(label);
     }
