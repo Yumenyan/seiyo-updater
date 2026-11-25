@@ -8,3 +8,4 @@ seiyo-updater.json
 *.private.json
 private-release/
 .seiyo-updater/
+bin/
