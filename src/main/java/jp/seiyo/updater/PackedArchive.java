@@ -30,10 +30,6 @@ final class PackedArchive {
         return file.getFileName().toString().endsWith(EXTENSION);
     }
 
-    static String storedName(String type, String id, String file) {
-        return (type.equals("mod") ? id : file) + EXTENSION;
-    }
-
     static void write(Path target, String name, String version, String hash, byte[] archive) throws IOException {
         var buffer = new ByteArrayOutputStream();
         try (var fields = new DataOutputStream(buffer)) {

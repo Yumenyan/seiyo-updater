@@ -189,9 +189,12 @@ final class UpdateScreen extends Screen {
     private String summary(Updater.Row row) {
         if (!row.problem().isEmpty()) return row.problem();
         if (row.matched()) return row.entry().version() + " · 最新";
-        if (row.installed() != null && !PackedArchive.isPacked(row.installed().path())
-                && row.installed().version().equals(row.entry().version())) {
-            return row.entry().version() + " · SYP に変換";
+        if (row.installed() != null) {
+            boolean packed = PackedArchive.isPacked(row.installed().path());
+            if (row.entry().type().equals("mod") && packed) return row.entry().version() + " · JAR へ移行";
+            if (row.entry().type().equals("pack") && !packed && row.installed().version().equals(row.entry().version())) {
+                return row.entry().version() + " · SYP に変換";
+            }
         }
         return (row.installed() == null ? "未導入" : row.installed().version())
             + "  →  " + row.entry().version();

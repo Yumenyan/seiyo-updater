@@ -122,7 +122,11 @@ public final class UpdateWorker {
     }
 
     static String hash(Path path) throws Exception {
-        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        return hash(path, "SHA-256");
+    }
+
+    static String hash(Path path, String algorithm) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance(algorithm);
         try (InputStream input = Files.newInputStream(path, NO_LINKS)) {
             byte[] buffer = new byte[65536];
             for (int length; (length = input.read(buffer)) != -1;) digest.update(buffer, 0, length);
@@ -178,7 +182,7 @@ public final class UpdateWorker {
         return items;
     }
 
-    private static void applyPending(Path root, Path home) throws Exception {
+    static void applyPending(Path root, Path home) throws Exception {
         Path pending = home.resolve(PENDING);
         if (!exists(pending)) return;
         if (!Files.isRegularFile(pending, NO_LINKS) || Files.size(pending) > 80) {

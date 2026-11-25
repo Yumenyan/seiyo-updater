@@ -23,11 +23,21 @@ button.primary:hover:not(:disabled){background:#005548}button:disabled{opacity:.
 .item{border-top:1px solid var(--line);padding:9px 0;flex-wrap:nowrap}.item div{flex:1;min-width:0;overflow-wrap:anywhere}.item small,.muted{color:var(--muted);font-size:12px}.item button{font-size:12px;padding-inline:8px}.remove{color:#a13428}
 .count{border-radius:99px;background:var(--pale);color:#125a4c;padding:4px 10px;font-size:12px;font-weight:700}
 footer{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-#status{min-height:22px;overflow-wrap:anywhere}#status[data-error="true"]{color:#a52b21}
+#status{min-height:22px;overflow-wrap:anywhere}[data-error="true"]{color:#a52b21}
 .options summary{cursor:pointer;font-weight:650}
 #entry-details{margin-top:14px}#entry-details .fields{margin-top:12px}
 #revision{width:112px}#status{flex:1;min-width:120px}
 #client-form{align-items:end}#client-form label{flex:1;min-width:min(280px,100%)}
+#modrinth-picker{margin-bottom:16px;padding:13px;border:1px solid var(--line);border-radius:9px;background:#f7fbfe}
+#modrinth-search{display:flex;align-items:end;gap:8px;margin:12px 0 8px}
+#modrinth-search label{flex:1;min-width:0}
+#modrinth-results{display:grid;gap:5px;margin-top:8px}
+.search-result{text-align:left;overflow-wrap:anywhere}
+.search-result small{display:block;margin-top:3px;color:var(--muted);font-weight:400}
+.search-result[aria-pressed="true"]{border-color:var(--accent);background:var(--pale)}
+#modrinth-status{min-height:1.4em;overflow-wrap:anywhere}
+#modrinth-versions{border-top:1px solid var(--line);margin-top:10px;padding-top:10px}
+#modrinth-add{margin-top:8px}
 [hidden]{display:none!important}
 @media(max-width:750px){.columns{grid-template-columns:1fr}.sheet{padding:15px}header>div,main{padding:17px}}
 @media(max-width:430px){.fields{grid-template-columns:1fr}}
@@ -44,11 +54,30 @@ footer{display:flex;align-items:center;justify-content:space-between;gap:12px;fl
   <p id="empty" class="muted" style="margin-top:14px">登録した Mod とリソースパックがここに並びます。</p>
   <div id="entries" style="margin-top:13px"></div>
 </section>
-<form id="editor" class="sheet">
+<section class="sheet" aria-labelledby="editor-title">
   <div class="title"><h2 id="editor-title">ファイルを登録</h2></div>
+  <details id="modrinth-picker" class="options">
+    <summary>Modrinth から探す</summary>
+    <form id="modrinth-search">
+      <label>Mod 名<input id="modrinth-query" type="search" maxlength="120" placeholder="例 Sodium" required></label>
+      <button id="modrinth-submit" type="submit">検索</button>
+    </form>
+    <p id="modrinth-status" class="muted" role="status"></p>
+    <div id="modrinth-results" aria-label="検索結果"></div>
+    <div id="modrinth-pages" class="tools" hidden>
+      <button id="modrinth-prev" type="button">前へ</button>
+      <span id="modrinth-page" class="muted"></span>
+      <button id="modrinth-next" type="button">次へ</button>
+    </div>
+    <div id="modrinth-versions" hidden>
+      <label><span id="modrinth-version-label">選択した Mod のバージョン</span><select id="modrinth-version"></select></label>
+      <button id="modrinth-add" type="button" class="primary">このバージョンを追加</button>
+    </div>
+  </details>
+<form id="editor">
   <div class="fields">
-    <label class="wide">配布する JAR / ZIP<input id="artifact" type="file" accept=".jar,.zip"></label>
-    <label class="wide">ファイルの直接 URL<input id="source" required type="url" placeholder="https://example.com/download.jar"></label>
+    <label class="wide">配布 URL<input id="source" required type="url" placeholder="Modrinth、Google ドライブ、または JAR / ZIP の直接 URL"></label>
+    <label class="wide">ローカルの JAR / ZIP（任意）<input id="artifact" type="file" accept=".jar,.zip"></label>
     <label class="check wide"><input id="required" type="checkbox">星陽への参加に必須</label>
   </div>
   <details id="entry-details" class="options">
@@ -59,6 +88,8 @@ footer{display:flex;align-items:center;justify-content:space-between;gap:12px;fl
       <label>表示名<input id="name" maxlength="100"></label>
       <label>バージョン<input id="version" maxlength="100"></label>
       <label>保存名<input id="file" maxlength="160"></label>
+      <label>ファイルサイズ（バイト）<input id="manual-size" type="number" min="1" max="134217728" step="1"></label>
+      <label>SHA-256<input id="manual-hash" maxlength="64" placeholder="サイズと指定すると取得を省略"></label>
       <label class="wide">依存先の ID<input id="requires" placeholder="例 fabric-api, mtr"></label>
       <p id="dependency-hint" class="wide muted" hidden></p>
       <label class="wide">更新メモ<textarea id="notes" maxlength="2000" rows="2"></textarea></label>
@@ -66,9 +97,11 @@ footer{display:flex;align-items:center;justify-content:space-between;gap:12px;fl
   </details>
   <div class="tools">
     <button class="primary" id="save-entry" type="submit">一覧に追加</button>
+    <button id="refresh-source" type="submit" hidden>URL から再取得して保存</button>
     <button id="reset-editor" type="button" hidden>編集を終了</button>
   </div>
 </form>
+</section>
 </div>
 <footer class="sheet">
   <label>配布番号<input id="revision" type="number" value="1" min="1" max="999999999999999" step="1"></label>
@@ -90,10 +123,16 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", {fatal:true});
 const maxFile = 128 * 1024 * 1024;
 const maxJson = 2 * 1024 * 1024;
+const modrinthApi = "https://api.modrinth.com/v2";
+const gameVersion = "1.19.2";
+const searchPageSize = 10;
 const entries = new Map();
 let lastRevision = 0;
 let editing = null;
 let busy = false;
+let modrinthPage = null;
+let modrinthProject = null;
+let modrinthVersions = [];
 
 function status(message, error = false) {
   $("status").textContent = message;
@@ -119,6 +158,164 @@ function https(value) {
     throw new Error("認証情報やフラグメントを含まない HTTPS URL を入力してください。");
   }
   return url.href;
+}
+
+function normalizeSource(value) {
+  const url = new URL(https(value));
+  if (url.host !== "drive.google.com") return url.href;
+  const filePage = url.pathname.match(/^\/file\/(?:u\/\d+\/)?d\/([a-zA-Z0-9_-]+)(?:\/(?:view|preview|edit))?\/?$/);
+  const queryPage = /^\/(?:open|uc)\/?$/.test(url.pathname);
+  const id = filePage ? filePage[1] : queryPage ? url.searchParams.get("id") : null;
+  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
+    throw new Error("Google ドライブの JAR / ZIP ファイルを開き、その共有 URL を入力してください。");
+  }
+  if (/^\/uc\/?$/.test(url.pathname) && url.searchParams.get("export") === "download") return url.href;
+  const downloadUrl = new URL("https://drive.usercontent.google.com/download");
+  downloadUrl.searchParams.set("id", id);
+  downloadUrl.searchParams.set("export", "download");
+  downloadUrl.searchParams.set("confirm", "t");
+  const resourceKey = url.searchParams.get("resourcekey");
+  if (resourceKey) downloadUrl.searchParams.set("resourcekey", resourceKey);
+  return downloadUrl.href;
+}
+
+async function fetchPublic(url) {
+  let response;
+  try {
+    response = await fetch(url, {
+      credentials:"omit", referrerPolicy:"no-referrer", signal:AbortSignal.timeout(45000)
+    });
+  } catch (error) {
+    if (error.name === "TimeoutError") throw new Error("配布先への接続がタイムアウトしました。");
+    throw new Error("ブラウザーから配布先を取得できません。直接 URL を確認するか、JAR / ZIP を手元から選択してください。");
+  }
+  if (!response.ok) throw new Error("配布先から取得できませんでした（HTTP " + response.status + "）。");
+  https(response.url || url);
+  return response;
+}
+
+async function readRemote(response, limit) {
+  if (Number(response.headers.get("Content-Length")) > limit) throw new Error("取得するファイルが大きすぎます。");
+  const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0;
+  for (;;) {
+    const {done, value} = await reader.read();
+    if (done) return new Blob(chunks);
+    size += value.length;
+    if (size > limit) {
+      await reader.cancel();
+      throw new Error("取得するファイルが大きすぎます。");
+    }
+    chunks.push(value);
+  }
+}
+
+async function modrinthJson(url) {
+  return JSON.parse(await (await readRemote(await fetchPublic(url), 8 * 1024 * 1024)).text());
+}
+
+async function compatibleVersions(project, loader, extension, label, releasesOnly, wantedFile = "") {
+  const endpoint = modrinthApi + "/project/" + encodeURIComponent(project) + "/version";
+  const query = new URLSearchParams({
+    loaders:JSON.stringify([loader]), game_versions:JSON.stringify([gameVersion]), include_changelog:"false"
+  });
+  const data = await modrinthJson(label ? endpoint + "/" + encodeURIComponent(label) : endpoint + "?" + query);
+  const candidates = label ? [data] : data;
+  const result = [];
+  for (const version of candidates.filter(version => version.game_versions?.includes(gameVersion) &&
+      version.loaders?.includes(loader) && (!releasesOnly || version.version_type === "release"))
+      .sort((left, right) => Date.parse(right.date_published) - Date.parse(left.date_published))) {
+    const files = (version.files || []).filter(file => file.filename.toLowerCase().endsWith(extension) &&
+      (!file.file_type || file.file_type === "unknown") && (!wantedFile || wantedFile === file.filename));
+    const file = files.find(file => file.primary) || files[0];
+    if (file) result.push({
+      number:version.version_number || version.name,
+      channel:version.version_type,
+      source:https(file.url),
+      filename:file.filename,
+      name:version.name,
+      size:file.size,
+      sha512:file.hashes?.sha512,
+      project:version.project_id || project
+    });
+  }
+  return result;
+}
+
+async function resolveSource(source) {
+  const url = new URL(source);
+  const cdn = url.hostname === "cdn.modrinth.com" &&
+    url.pathname.match(/^\/data\/([a-z0-9]+)\/versions\/([a-z0-9]+)\/([^/]+\.(jar|zip))$/i);
+  if (cdn) {
+    const [, project, version, filename, extension] = cdn;
+    const isMod = extension.toLowerCase() === "jar";
+    const versions = await compatibleVersions(project, isMod ? "fabric" : "minecraft",
+      isMod ? ".jar" : ".zip", version, false, decodeURIComponent(filename));
+    if (!versions.length) throw new Error("この Modrinth ファイルは星陽の環境に対応していません。");
+    return versions[0];
+  }
+  if (!["modrinth.com","www.modrinth.com"].includes(url.hostname)) return {source};
+  const [, kind, project, page, label, ...rest] = url.pathname.replace(/\/+$/, "").split("/");
+  if (!["mod","resourcepack"].includes(kind) || !project || rest.length ||
+      (page && page !== "versions" && !(page === "version" && label)) ||
+      (page !== "version" && label)) {
+    throw new Error("Modrinth の Mod・リソースパックのページか、個別バージョンの URL を入力してください。");
+  }
+  const loader = kind === "mod" ? "fabric" : "minecraft";
+  const extension = kind === "mod" ? ".jar" : ".zip";
+  const versions = await compatibleVersions(decodeURIComponent(project), loader, extension,
+    label ? decodeURIComponent(label) : "", !label);
+  if (versions.length) return versions[0];
+  throw new Error(label ? "指定されたバージョンは星陽の環境に対応していません。"
+    : "Minecraft 1.19.2 対応の正式版が見つかりません。ベータ版などは個別バージョンの URL を指定してください。");
+}
+
+async function fetchArchive(resolved) {
+  const isDrive = ["drive.google.com", "drive.usercontent.google.com"].includes(new URL(resolved.source).hostname);
+  const driveToken = isDrive ? document.querySelector?.('meta[name="seiyo-drive-token"]')?.content : "";
+  let response;
+  if (driveToken) {
+    response = await fetch("/drive?url=" + encodeURIComponent(resolved.source), {
+      headers:{"X-Seiyo-Drive":driveToken}, signal:AbortSignal.timeout(180000)
+    });
+    if (!response.ok) throw new Error(await response.text());
+  } else {
+    try {
+      response = await fetchPublic(resolved.source);
+    } catch (error) {
+      if (isDrive) throw new Error("Google ドライブはブラウザーから直接取得できませんでした。tools/drive-editor.cmd で開くか、手元のファイルを選んでください。");
+      throw error;
+    }
+  }
+  if (response.headers.get("Content-Type")?.toLowerCase().includes("text/html")) {
+    if (isDrive) {
+      throw new Error("Google ドライブからファイルを取得できませんでした。tools/drive-editor.cmd で開き、共有設定を確認してください。");
+    }
+    throw new Error("ダウンロード先が Web ページを返しました。JAR / ZIP の直接 URL を入力してください。");
+  }
+  const archive = await readRemote(response, maxFile);
+  const pathname = value => decodeURIComponent(new URL(value).pathname.split("/").at(-1));
+  const disposition = response.headers.get("Content-Disposition") || "";
+  let headerName = disposition.match(/(?:^|;)\s*filename\s*=\s*(?:"([^"]+)"|([^;]+))/i)?.slice(1).find(Boolean)?.trim();
+  const encodedName = disposition.match(/(?:^|;)\s*filename\*\s*=\s*UTF-8'[^']*'([^;]+)/i)?.[1]?.trim();
+  if (encodedName) {
+    try { headerName = decodeURIComponent(encodedName); } catch { /* Keep the plain filename if available. */ }
+  }
+  const name = [resolved.filename, headerName, pathname(response.url || resolved.source), pathname(resolved.source)]
+    .filter(value => value && !/[\\/]/.test(value))
+    .find(value => value && /\.(jar|zip)$/i.test(value));
+  if (name) return new File([archive], name);
+  try {
+    const metadata = await archiveMetadata(archive, "fabric.mod.json");
+    return new File([archive], metadata.id + ".jar");
+  } catch (error) {
+    await archiveMetadata(archive, "pack.mcmeta");
+    const source = new URL(resolved.source);
+    const id = source.hostname === "drive.usercontent.google.com" ? source.searchParams.get("id") : "";
+    const fallback = id ? "drive-" + id : pathname(resolved.source) || "resource-pack";
+    return new File([archive], fallback + ".zip");
+  }
 }
 
 function download(blob, filename) {
@@ -239,7 +436,7 @@ function validateEntry(entry) {
       typeof entry.version !== "string" || !entry.version.trim() || entry.version.length > 100 ||
       (!mod && entry.type !== "pack") || !validFile(entry.file) ||
       !entry.file.endsWith(mod ? ".jar" : ".zip") ||
-      !/^[a-f0-9]{64}$/.test(entry.sha256) || !Number.isInteger(entry.size) ||
+      !validHash(entry) || !Number.isInteger(entry.size) ||
       entry.size < 1 || entry.size > maxFile || typeof entry.required !== "boolean" ||
       !Array.isArray(entry.requires) || new Set(entry.requires).size !== entry.requires.length ||
       !entry.requires.every(id => typeof id === "string" && /^[a-z][a-z0-9_-]{1,63}$/.test(id)) ||
@@ -248,6 +445,13 @@ function validateEntry(entry) {
   }
   if (entry.mode === "plain") https(entry.source);
   else if (entry.mode !== "aes-gcm") throw new Error("配布方式を確認してください。");
+}
+
+function validHash(entry) {
+  if (Object.hasOwn(entry, "sha512")) {
+    return entry.mode === "plain" && !Object.hasOwn(entry, "sha256") && /^[a-f0-9]{128}$/.test(entry.sha512);
+  }
+  return /^[a-f0-9]{64}$/.test(entry.sha256);
 }
 
 function validateGraph(items) {
@@ -280,6 +484,7 @@ function clearEditor() {
   $("editor-title").textContent = "ファイルを登録";
   $("save-entry").textContent = "一覧に追加";
   $("reset-editor").hidden = true;
+  $("refresh-source").hidden = true;
   $("dependency-hint").hidden = true;
   $("entry-details").open = false;
 }
@@ -295,6 +500,7 @@ function edit(item) {
   $("editor-title").textContent = "登録内容を編集";
   $("save-entry").textContent = "変更を保存";
   $("reset-editor").hidden = false;
+  $("refresh-source").hidden = false;
   $("artifact").focus();
 }
 
@@ -303,6 +509,13 @@ function render() {
   $("export").disabled = busy;
   $("load-catalog").disabled = busy;
   $("save-entry").disabled = busy;
+  $("refresh-source").disabled = busy;
+  $("modrinth-submit").disabled = busy;
+  $("modrinth-prev").disabled = busy || !modrinthPage?.offset;
+  $("modrinth-next").disabled = busy || !modrinthPage ||
+    modrinthPage.offset + searchPageSize >= modrinthPage.total;
+  $("modrinth-add").disabled = busy || $("modrinth-version").value === "";
+  $("modrinth-add").textContent = editing ? "このバージョンで更新" : "このバージョンを追加";
   $("count").textContent = entries.size + " 件";
   $("empty").hidden = entries.size > 0;
   $("entries").replaceChildren();
@@ -337,20 +550,113 @@ function render() {
   }
 }
 
-async function run(task) {
+async function run(task, report = status) {
   if (busy) return;
   busy = true;
   render();
   try {
-    status("");
+    report("");
     await task();
   } catch (error) {
-    status(error.message || String(error), true);
+    report(error.message || String(error), true);
   } finally {
     busy = false;
     render();
   }
 }
+
+function modrinthStatus(message, error = false) {
+  $("modrinth-status").textContent = message;
+  $("modrinth-status").dataset.error = String(error);
+}
+
+function showSearchResults() {
+  $("modrinth-results").replaceChildren();
+  for (const project of modrinthPage.hits) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "search-result";
+    button.setAttribute("aria-pressed", String(modrinthProject?.project_id === project.project_id));
+    const title = document.createElement("strong");
+    title.textContent = project.title;
+    const detail = document.createElement("small");
+    detail.textContent = [project.author, project.description].filter(Boolean).join(" · ");
+    button.append(title, detail);
+    button.addEventListener("click", () => run(() => selectModrinthProject(project), modrinthStatus));
+    $("modrinth-results").append(button);
+  }
+  $("modrinth-pages").hidden = modrinthPage.total <= searchPageSize;
+  $("modrinth-page").textContent = (modrinthPage.offset + 1) + "〜" +
+    (modrinthPage.offset + modrinthPage.hits.length) + " / " + modrinthPage.total;
+}
+
+async function searchModrinth(query, offset) {
+  if (!query) return;
+  modrinthStatus("検索しています…");
+  const parameters = new URLSearchParams({
+    query, offset:String(offset), limit:String(searchPageSize),
+    facets:JSON.stringify([["project_type:mod"], ["categories:fabric"], ["versions:" + gameVersion]])
+  });
+  const response = await modrinthJson(modrinthApi + "/search?" + parameters);
+  if (!Array.isArray(response.hits) || !Number.isSafeInteger(response.total_hits)) {
+    throw new Error("Modrinth の検索結果を読み取れませんでした。");
+  }
+  modrinthPage = {query, offset, total:response.total_hits, hits:response.hits};
+  modrinthProject = null;
+  modrinthVersions = [];
+  $("modrinth-versions").hidden = true;
+  $("modrinth-version").replaceChildren();
+  showSearchResults();
+  modrinthStatus(response.hits.length ? "バージョンを確認したい Mod を選んでください。"
+    : "Minecraft 1.19.2／Fabric の候補が見つかりませんでした。");
+}
+
+async function selectModrinthProject(project) {
+  modrinthProject = project;
+  $("modrinth-versions").hidden = true;
+  $("modrinth-version").replaceChildren();
+  showSearchResults();
+  modrinthStatus(project.title + " の対応バージョンを探しています…");
+  modrinthVersions = await compatibleVersions(project.project_id, "fabric", ".jar", "", false);
+  if (!modrinthVersions.length) {
+    modrinthStatus("この Mod には Minecraft 1.19.2／Fabric に対応する配布 JAR がありません。");
+    return;
+  }
+  const placeholder = document.createElement("option");
+  placeholder.textContent = "バージョンを選択";
+  placeholder.value = "";
+  $("modrinth-version").append(placeholder);
+  modrinthVersions.forEach((version, index) => {
+    const option = document.createElement("option");
+    const channel = {release:"正式版", beta:"ベータ", alpha:"アルファ"}[version.channel] || "";
+    option.value = String(index);
+    option.textContent = [version.number || version.filename, channel].filter(Boolean).join(" · ");
+    $("modrinth-version").append(option);
+  });
+  $("modrinth-version").value = "";
+  $("modrinth-version-label").textContent = project.title + " の対応バージョン";
+  $("modrinth-versions").hidden = false;
+  $("modrinth-version").focus();
+  modrinthStatus("");
+}
+
+$("modrinth-search").addEventListener("submit", event => {
+  event.preventDefault();
+  run(() => searchModrinth($("modrinth-query").value.trim(), 0), modrinthStatus);
+});
+$("modrinth-prev").addEventListener("click", () =>
+  run(() => searchModrinth(modrinthPage.query, modrinthPage.offset - searchPageSize), modrinthStatus));
+$("modrinth-next").addEventListener("click", () =>
+  run(() => searchModrinth(modrinthPage.query, modrinthPage.offset + searchPageSize), modrinthStatus));
+$("modrinth-version").addEventListener("change", () => {
+  $("modrinth-add").disabled = busy || $("modrinth-version").value === "";
+});
+$("modrinth-add").addEventListener("click", () => {
+  const index = $("modrinth-version").value;
+  if (index !== "" && modrinthVersions[index]) {
+    run(() => saveEntry(false, modrinthVersions[index], modrinthStatus), modrinthStatus);
+  }
+});
 
 function receive(input, handler) {
   $(input).addEventListener("change", () => {
@@ -393,7 +699,10 @@ receive("catalog-input", async file => {
 $("reset-editor").addEventListener("click", clearEditor);
 $("artifact").addEventListener("change", () => run(async () => {
   const file = $("artifact").files[0];
-  if (!file) return;
+  if (file) await populateFromArchive(file);
+}));
+
+async function populateFromArchive(file) {
   if (file.size < 1 || file.size > maxFile) throw new Error("1ファイルの上限は128 MiBです。");
   const isMod = /\.jar$/i.test(file.name);
   $("type").value = isMod ? "mod" : "pack";
@@ -425,54 +734,94 @@ $("artifact").addEventListener("change", () => run(async () => {
     const filename = file.name.replace(/\.(jar|zip)$/i, extension);
     $("file").value = validFile(filename) && filename.endsWith(extension) ? filename : $("id").value + extension;
   }
-}));
+}
 
 $("editor").addEventListener("submit", event => {
   event.preventDefault();
-  run(async () => {
-    const previous = editing ? entries.get(editing) : null;
-    const file = $("artifact").files[0];
-    const item = {};
-    for (const field of ["id","name","version","type","file","notes"]) item[field] = $(field).value.trim();
-    if (!editing && entries.has(item.id)) throw new Error("この ID は登録済みです。一覧から編集してください。");
-    if (previous && previous.type !== item.type) throw new Error("登録済みの項目は種類を変更できません。");
-    item.required = $("required").checked;
-    item.requires = Array.from(new Set($("requires").value.split(/[\s,、]+/).filter(Boolean)));
-    item.mode = "plain";
-    item.source = https($("source").value.trim());
-    if (!file && (!previous || previous.mode !== "plain" ||
-        (item.type === "mod" && previous.version !== item.version))) {
-      throw new Error("登録・更新する JAR / ZIP を選んでください。");
-    }
-    if (file) {
-      if (file.size < 1 || file.size > maxFile) throw new Error("1ファイルの上限は128 MiBです。");
-      if (item.type === "mod") {
-        const metadata = await archiveMetadata(file, "fabric.mod.json");
-        if (metadata.id !== item.id || metadata.version !== item.version || metadata.environment === "server") {
-          throw new Error("JAR の Mod ID・バージョン・クライアント対応を確認してください。");
-        }
-      } else {
-        const metadata = await archiveMetadata(file, "pack.mcmeta");
-        if (!Number.isInteger(metadata.pack?.pack_format)) throw new Error("pack.mcmeta の pack_format を確認してください。");
-      }
-      const data = await file.arrayBuffer();
-      item.sha256 = await sha(data);
-      item.size = data.byteLength;
-    } else {
-      item.sha256 = previous.sha256;
-      item.size = previous.size;
-    }
-    try {
-      validateEntry(item);
-    } catch (error) {
-      $("entry-details").open = true;
-      throw error;
-    }
-    entries.set(item.id, item);
-    clearEditor();
-    status(item.name + " を登録しました。");
-  });
+  run(() => saveEntry(editing !== null && event.submitter === $("refresh-source")));
 });
+
+async function saveEntry(refreshSource, remote = null, report = status) {
+  const previous = editing ? entries.get(editing) : null;
+  let file = refreshSource || remote ? null : $("artifact").files[0];
+  const url = remote?.source || normalizeSource($("source").value.trim());
+  const sameSource = !remote && !refreshSource && previous?.mode === "plain" && previous.source === url;
+  const manualSize = $("manual-size").value;
+  const manualHash = ($("manual-hash").value || "").trim().toLowerCase();
+  const manual = !remote && !refreshSource && !file && Boolean(manualSize || manualHash);
+  if (manual && (!manualSize || !manualHash)) throw new Error("サイズと SHA-256 の両方を入力してください。");
+  const resolved = remote || (manual || sameSource || (file && new URL(url).hostname === "cdn.modrinth.com")
+    ? {source:url} : await resolveSource(url));
+  const fromMetadata = !file && Boolean(resolved.project);
+  if (fromMetadata) {
+    if (!/^[a-f0-9]{128}$/.test(resolved.sha512) || !Number.isSafeInteger(resolved.size) || resolved.size < 1) {
+      throw new Error("Modrinth にファイルサイズまたは SHA-512 がありません。ローカルのファイルと直接 URL を指定してください。");
+    }
+    if (resolved.size > maxFile) throw new Error("このファイルはアップデーターの上限（128 MiB）を超えています。");
+    const isMod = /\.jar$/i.test(resolved.filename);
+    const type = isMod ? "mod" : "pack";
+    const projectId = resolved.project.replace(/[A-Z]/g, letter => "-" + letter.toLowerCase());
+    $("type").value = type;
+    $("id").value = previous?.id || "modrinth-" + projectId;
+    $("version").value = resolved.number;
+    if (!previous) {
+      const extension = isMod ? ".jar" : ".zip";
+      $("name").value = (remote ? modrinthProject.title : resolved.name || resolved.filename).slice(0, 100);
+      $("file").value = validFile(resolved.filename) && resolved.filename.endsWith(extension) ?
+        resolved.filename : $("id").value + extension;
+    }
+  } else if (!file && !sameSource && !manual) {
+    report("配布 URL から取得しています…");
+    file = await fetchArchive(resolved);
+    await populateFromArchive(file);
+  }
+  const item = {};
+  for (const field of ["id","name","version","type","file","notes"]) item[field] = $(field).value.trim();
+  if (!editing && entries.has(item.id)) throw new Error("この ID は登録済みです。一覧から編集してください。");
+  if (previous && previous.type !== item.type) throw new Error("登録済みの項目は種類を変更できません。");
+  item.required = $("required").checked;
+  item.requires = Array.from(new Set($("requires").value.split(/[\s,、]+/).filter(Boolean)));
+  item.mode = "plain";
+  item.source = resolved.source;
+  if (!file && !fromMetadata && !manual && (!previous || previous.mode !== "plain" ||
+      (item.type === "mod" && previous.version !== item.version))) {
+    throw new Error("登録・更新する JAR / ZIP を選んでください。");
+  }
+  if (fromMetadata) {
+    item.sha512 = resolved.sha512;
+    item.size = resolved.size;
+  } else if (manual) {
+    item.sha256 = manualHash;
+    item.size = Number(manualSize);
+  } else if (file) {
+    if (file.size < 1 || file.size > maxFile) throw new Error("1ファイルの上限は128 MiBです。");
+    if (item.type === "mod") {
+      const metadata = await archiveMetadata(file, "fabric.mod.json");
+      if (metadata.id !== item.id || metadata.version !== item.version || metadata.environment === "server") {
+        throw new Error("JAR の Mod ID・バージョン・クライアント対応を確認してください。");
+      }
+    } else {
+      const metadata = await archiveMetadata(file, "pack.mcmeta");
+      if (!Number.isInteger(metadata.pack?.pack_format)) throw new Error("pack.mcmeta の pack_format を確認してください。");
+    }
+    const data = await file.arrayBuffer();
+    item.sha256 = await sha(data);
+    item.size = data.byteLength;
+  } else {
+    if (Object.hasOwn(previous, "sha512")) item.sha512 = previous.sha512;
+    else item.sha256 = previous.sha256;
+    item.size = previous.size;
+  }
+  try {
+    validateEntry(item);
+  } catch (error) {
+    $("entry-details").open = true;
+    throw error;
+  }
+  entries.set(item.id, item);
+  clearEditor();
+  report(item.name + " を登録しました。");
+}
 
 $("export").addEventListener("click", () => run(async () => {
   validateGraph(entries);

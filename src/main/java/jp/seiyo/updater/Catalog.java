@@ -7,11 +7,11 @@ import com.google.gson.JsonParser;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.security.KeyFactory;
 import java.security.MessageDigest;
 import java.security.Signature;
@@ -42,7 +42,7 @@ final class Catalog {
         static Config load(Path path) throws Exception {
             try (InputStream input = Files.newInputStream(path)) {
                 JsonObject json = parse(read(input, 16384));
-                URI manifest = https(URI.create(required(json, "manifestUrl", 2048)));
+                URI manifest = Downloads.https(URI.create(required(json, "manifestUrl", 2048)));
                 String key = json.has("publicKey") ? required(json, "publicKey", 512) : null;
                 byte[] content = json.has("contentKey") ? BASE64.decode(required(json, "contentKey", 128)) : null;
                 if (content != null && (key == null || content.length != 32)) {
@@ -55,16 +55,29 @@ final class Catalog {
 
     record Entry(String id, String name, String type, String version, String file,
                  URI uri, boolean encrypted, String hash, int size, boolean required,
-                 List<String> dependencies, String notes) {
+                 List<String> dependencies, String notes, String sha512) {
+        Entry(String id, String name, String type, String version, String file, URI uri, boolean encrypted,
+              String hash, int size, boolean required, List<String> dependencies, String notes) {
+            this(id, name, type, version, file, uri, encrypted, hash, size, required, dependencies, notes, "");
+        }
+
+        boolean metadataOnly() {
+            return !sha512.isEmpty();
+        }
+
         String folder() {
             return type.equals("mod") ? "mods" : "resourcepacks";
+        }
+        String storedName() {
+            if (type.equals("pack")) return file + PackedArchive.EXTENSION;
+            return metadataOnly() ? id + ".jar" : file;
         }
     }
 
     record Release(long revision, String fingerprint, Map<String, Entry> entries, byte[] key) {}
 
     static Release fetch(Config config) throws Exception {
-        JsonObject envelope = parse(download(config.manifest, MAX_JSON));
+        JsonObject envelope = parse(Downloads.fetch(config.manifest, MAX_JSON).data());
         String encoding = required(envelope, "format", 32);
         boolean unsigned = encoding.equals("seiyo-packed-unsigned-v1");
         boolean packed = unsigned || encoding.equals("seiyo-packed-v1");
@@ -106,7 +119,7 @@ final class Catalog {
             if (packed && entry.encrypted) throw new IOException("新形式のカタログには通常の JAR／ZIP の URL を指定してください。");
             if (entry.encrypted && config.contentKey == null) throw new IOException("旧カタログを取得するには旧形式の設定ファイルが必要です。");
             if (entries.putIfAbsent(entry.id, entry) != null
-                    || !paths.add(entry.folder() + "/" + entry.file.toLowerCase(Locale.ROOT))) {
+                    || !paths.add(entry.folder() + "/" + entry.storedName().toLowerCase(Locale.ROOT))) {
                 throw new IOException("ID または保存名が重複しています: " + entry.id);
             }
         }
@@ -132,19 +145,22 @@ final class Catalog {
         String id = required(json, "id", 64);
         String type = required(json, "type", 16);
         String file = required(json, "file", 160);
-        String hash = required(json, "sha256", 64);
+        String sha512 = json.has("sha512") ? required(json, "sha512", 128) : "";
+        String hash = sha512.isEmpty() ? required(json, "sha256", 64) : "";
         String mode = required(json, "mode", 20);
         String size = json.get("size").getAsString();
         if (!id.matches("[a-z][a-z0-9_-]{1,63}")
                 || !UpdateWorker.validFilename(file)
                 || !(type.equals("mod") && file.endsWith(".jar")
                     || type.equals("pack") && file.endsWith(".zip"))
-                || !hash.matches("[0-9a-f]{64}") || !size.matches("[1-9][0-9]{0,8}")
+                || (sha512.isEmpty() ? !hash.matches("[0-9a-f]{64}")
+                    : !sha512.matches("[0-9a-f]{128}") || !mode.equals("plain") || json.has("sha256"))
+                || !size.matches("[1-9][0-9]{0,8}")
                 || Integer.parseInt(size) > MAX_FILE
                 || !(mode.equals("aes-gcm") || mode.equals("plain"))) {
             throw new IOException("登録内容が不正です: " + id);
         }
-        URI asset = https(base.resolve(required(json, "source", 2048)));
+        URI asset = Downloads.https(base.resolve(required(json, "source", 2048)));
         List<String> dependencies = new ArrayList<>();
         for (JsonElement dep : json.getAsJsonArray("requires")) {
             String dependency = dep.getAsString();
@@ -160,7 +176,7 @@ final class Catalog {
         if (notes.length() > 2000) throw new IOException("更新メモが長すぎます: " + id);
         return new Entry(id, required(json, "name", 100), type, required(json, "version", 100),
             file, asset, mode.equals("aes-gcm"), hash, Integer.parseInt(size),
-            json.get("required").getAsBoolean(), List.copyOf(dependencies), notes);
+            json.get("required").getAsBoolean(), List.copyOf(dependencies), notes, sha512);
     }
 
     private static void checkDependencies(String id, Map<String, Entry> entries,
@@ -175,7 +191,7 @@ final class Catalog {
     }
 
     static byte[] artifact(byte[] key, Entry entry) throws Exception {
-        byte[] data = download(entry.uri, entry.size + (entry.encrypted ? 32 : 0));
+        byte[] data = Downloads.fetch(entry.uri, entry.size + (entry.encrypted ? 32 : 0)).data();
         if (entry.encrypted) {
             if (data.length != entry.size + 32 || !java.util.Arrays.equals(MAGIC,
                     java.util.Arrays.copyOf(data, MAGIC.length))) {
@@ -191,8 +207,11 @@ final class Catalog {
                 throw new IOException("配布鍵が異なるか、ファイルが破損しています: " + entry.name, exception);
             }
         }
-        if (data.length != entry.size || !hex(data).equals(entry.hash)) {
-            throw new IOException("ファイルの SHA-256 またはサイズが一致しません: " + entry.name);
+        String expected = entry.metadataOnly() ? entry.sha512 : entry.hash;
+        String algorithm = entry.metadataOnly() ? "SHA-512" : "SHA-256";
+        if (data.length != entry.size || !HexFormat.of().formatHex(
+                MessageDigest.getInstance(algorithm).digest(data)).equals(expected)) {
+            throw new IOException("ファイルの " + algorithm + " またはサイズが一致しません: " + entry.name);
         }
         return data;
     }
@@ -217,46 +236,30 @@ final class Catalog {
         return bytes;
     }
 
-    private static String hex(byte[] data) throws Exception {
+    static String hex(byte[] data) throws Exception {
         return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(data));
     }
 
-    private static URI https(URI uri) throws IOException {
-        if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null
-                || uri.getUserInfo() != null || uri.getFragment() != null) {
-            throw new IOException("HTTPS の配布 URL を指定してください。");
+    static void rememberRevision(Path home, Catalog.Config config, Catalog.Release release) throws Exception {
+        byte[] channel = MessageDigest.getInstance("SHA-256").digest(
+            (config.manifest() + "\n" + config.publicKey()).getBytes(StandardCharsets.UTF_8));
+        Path version = home.resolve("revision-" + HexFormat.of().formatHex(channel));
+        String value = release.revision() + " " + release.fingerprint();
+        if (Files.isRegularFile(version, UpdateWorker.NO_LINKS)) {
+            String[] previous = Files.readString(version).trim().split(" ", 2);
+            long latest = Long.parseLong(previous[0]);
+            if (latest > release.revision() || (latest == release.revision() && !previous[1].equals(release.fingerprint()))) {
+                throw new IOException("以前に確認したカタログより古いか、同じ配布番号が再利用されています。");
+            }
+            if (latest == release.revision()) return;
         }
-        return uri;
+        Path temporary = Files.createTempFile(home, "revision-", ".tmp");
+        try {
+            Files.writeString(temporary, value);
+            Files.move(temporary, version, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            Files.deleteIfExists(temporary);
+        }
     }
 
-    private static byte[] download(URI location, int limit) throws IOException {
-        URI current = location;
-        for (int hop = 0; hop < 6; hop++) {
-            HttpURLConnection connection = (HttpURLConnection) current.toURL().openConnection();
-            connection.setConnectTimeout(10000);
-            connection.setReadTimeout(20000);
-            connection.setInstanceFollowRedirects(false);
-            connection.setUseCaches(false);
-            connection.setRequestProperty("User-Agent", "SeiyoUpdater/1.0");
-            try {
-                int status = connection.getResponseCode();
-                if (status == 200) {
-                    if (connection.getContentLengthLong() > limit) {
-                        throw new IOException("配布ファイルがサイズ上限を超えています。");
-                    }
-                    try (InputStream body = connection.getInputStream()) {
-                        return read(body, limit);
-                    }
-                }
-                String redirect = connection.getHeaderField("Location");
-                if (!Set.of(301, 302, 303, 307, 308).contains(status) || redirect == null) {
-                    throw new IOException("配布先で HTTP " + status + " が返されました。");
-                }
-                current = https(current.resolve(redirect));
-            } finally {
-                connection.disconnect();
-            }
-        }
-        throw new IOException("配布先の URL が何度も転送されました。");
-    }
 }
